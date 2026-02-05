@@ -1,8 +1,20 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Tldraw, createShapeId, Editor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import { useState, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+import { createShapeId, Editor } from 'tldraw'
+
+const Tldraw = dynamic(
+  async () => {
+    const mod = await import('tldraw')
+    await import('tldraw/tldraw.css')
+    return mod.Tldraw
+  },
+  {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-screen bg-background text-foreground">Loading canvas...</div>,
+  }
+)
 
 interface FlowchartNode {
   id: string
