@@ -1,20 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import dynamic from 'next/dynamic'
-import { createShapeId, Editor } from 'tldraw'
-
-const Tldraw = dynamic(
-  async () => {
-    const mod = await import('tldraw')
-    await import('tldraw/tldraw.css')
-    return mod.Tldraw
-  },
-  {
-    ssr: false,
-    loading: () => <div className="flex items-center justify-center h-screen bg-background text-foreground">Loading canvas...</div>,
-  }
-)
+import { Tldraw, createShapeId, Editor } from 'tldraw'
+import 'tldraw/tldraw.css'
 
 interface FlowchartNode {
   id: string
@@ -33,10 +21,16 @@ interface FlowchartData {
 }
 
 export default function Page() {
+  const [mounted, setMounted] = useState(false)
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const editorRef = useRef<Editor | null>(null)
+
+  useEffect(() => {
+    console.log('[v0] Page mounted')
+    setMounted(true)
+  }, [])
 
   const handleMount = (editor: Editor) => {
     editorRef.current = editor
@@ -168,6 +162,14 @@ export default function Page() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (!mounted) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-gray-100">
+        <p className="text-gray-600">Loading AI Canvas...</p>
+      </div>
+    )
   }
 
   return (
