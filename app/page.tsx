@@ -1,130 +1,19 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Tldraw, createShapeId, Editor } from 'tldraw'
-import 'tldraw/tldraw.css'
-
-interface FlowchartNode {
-  id: string
-  label: string
-}
-
-interface FlowchartEdge {
-  source: string
-  target: string
-  label?: string
-}
-
-interface FlowchartData {
-  nodes: FlowchartNode[]
-  edges: FlowchartEdge[]
-}
+import { useState } from 'react'
 
 export default function Page() {
-  const [mounted, setMounted] = useState(false)
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const editorRef = useRef<Editor | null>(null)
-
-  useEffect(() => {
-    console.log('[v0] Page mounted')
-    setMounted(true)
-  }, [])
-
-  const handleMount = (editor: Editor) => {
-    editorRef.current = editor
-  }
-
-  const makeRichText = (text: string | undefined) => {
-    if (typeof text !== 'string') return undefined
-
-    const value = text.trim()
-    if (!value) return undefined
-
-    return {
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: value }],
-        },
-      ],
-    }
-  }
-
-  const drawFlowchart = ({ nodes, edges }: FlowchartData) => {
-    const editor = editorRef.current
-    if (!editor) return
-
-    const currentIds = Array.from(editor.getCurrentPageShapeIds())
-    if (currentIds.length > 0) {
-      editor.deleteShapes(currentIds)
-    }
-
-    const positionMap: Record<string, { cx: number; cy: number }> = {}
-    let x = 100
-    let y = 100
-    const yGap = 150
-    const nodeWidth = 200
-    const nodeHeight = 60
-
-    if (Array.isArray(nodes)) {
-      nodes.forEach((node) => {
-        const shapeId = createShapeId()
-
-        positionMap[node.id] = {
-          cx: x + nodeWidth / 2,
-          cy: y + nodeHeight / 2,
-        }
-
-        const richText = makeRichText(node.label)
-
-        editor.createShape({
-          id: shapeId,
-          type: 'geo',
-          x,
-          y,
-          props: {
-            geo: 'rectangle',
-            w: nodeWidth,
-            h: nodeHeight,
-            fill: 'none',
-            ...(richText ? { richText } : {}),
-          },
-        })
-
-        y += yGap
-      })
-    }
-
-    if (Array.isArray(edges)) {
-      edges.forEach((edge) => {
-        const from = positionMap[edge.source]
-        const to = positionMap[edge.target]
-        if (!from || !to) return
-
-        const richText = makeRichText(edge.label)
-
-        editor.createShape({
-          type: 'arrow',
-          props: {
-            start: { x: from.cx, y: from.cy },
-            end: { x: to.cx, y: to.cy },
-            ...(richText ? { richText } : {}),
-          },
-        })
-      })
-    }
-
-    editor.zoomToFit()
-  }
+  const [result, setResult] = useState<string | null>(null)
 
   async function handleGenerate() {
     if (!inputText.trim()) return
     
     setIsLoading(true)
     setError(null)
+    setResult(null)
     
     try {
       const response = await fetch('/api/flowchart', {
@@ -139,61 +28,56 @@ export default function Page() {
       }
 
       const data = await response.json()
-
-      const file = data.files?.find(
-        (f: { content: string }) => typeof f.content === 'string' && f.content.trim().startsWith('{')
-      )
-
-      if (!file) {
-        throw new Error('No JSON file returned from v0')
-      }
-
-      let instructions: FlowchartData
-      try {
-        instructions = JSON.parse(file.content)
-      } catch {
-        throw new Error('Failed to parse flowchart JSON')
-      }
-
-      drawFlowchart(instructions)
+      setResult(JSON.stringify(data, null, 2))
     } catch (err) {
-      console.error('Generate flowchart failed:', err)
+      console.error('[v0] Generate flowchart failed:', err)
       setError(err instanceof Error ? err.message : 'Failed to generate flowchart')
     } finally {
       setIsLoading(false)
     }
   }
 
-  if (!mounted) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-100">
-        <p className="text-gray-600">Loading AI Canvas...</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="fixed inset-0">
-      <div className="absolute bottom-[60px] left-4 z-[1000] bg-white p-3 rounded-lg w-80 shadow-lg">
-        <textarea
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Describe your process (e.g. Login system)"
-          className="w-full h-24 resize-none mb-2 p-2 border border-gray-200 rounded text-sm text-gray-900"
-          disabled={isLoading}
-        />
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-3xl font-bold text-gray-900 mb-6">AI Canvas - Flowchart Generator</h1>
+        
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Describe your process
+          </label>
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder="e.g., User login authentication flow"
+            className="w-full h-32 resize-none p-3 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
+          />
+          
+          <button
+            onClick={handleGenerate}
+            disabled={isLoading || !inputText.trim()}
+            className="mt-4 w-full py-3 px-4 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? 'Generating...' : 'Generate Flowchart'}
+          </button>
+        </div>
+
         {error && (
-          <p className="text-red-500 text-xs mb-2">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <p className="text-red-700">{error}</p>
+          </div>
         )}
-        <button
-          onClick={handleGenerate}
-          disabled={isLoading || !inputText.trim()}
-          className="w-full p-2 cursor-pointer bg-neutral-800 text-white border-none rounded disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoading ? 'Generating...' : 'Generate Flowchart'}
-        </button>
+
+        {result && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Generated Result</h2>
+            <pre className="bg-gray-100 p-4 rounded-lg overflow-auto text-sm text-gray-800">
+              {result}
+            </pre>
+          </div>
+        )}
       </div>
-      <Tldraw onMount={handleMount} persistenceKey="flowchart-ai" />
     </div>
   )
 }
