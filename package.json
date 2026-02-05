@@ -4,16 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "server": "node server.js",
-  "client": "vite",
-  "dev": "concurrently \"npm run server\" \"npm run client\"",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview"
-},
+    "server": "node server.js",
+    "client": "vite",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "next": "^16.1.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tldraw": "^4.3.1",
