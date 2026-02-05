@@ -10,140 +10,134 @@ export default function App() {
 		editorRef.current = editor
 	}
 
-	const handleGenerate = async () => {
-		if (!inputText.trim() || !editorRef.current) return
+async function handleGenerate() {
+  try {
+    const response = await fetch('/api/flowchart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: inputText }),
+    })
 
-		try {
-			console.log("Attempting to fetch from API...")
+    if (!response.ok) {
+      const errText = await response.text()
+      throw new Error(errText || 'Request failed')
+    }
 
-			// --- FIX 1: URL FORMATTING ---
-			// Ensure this URL is a clean string without brackets []
-			const response = await fetch('https://api.v0.dev/v1/chat/completions', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					// Make sure your .env file has VITE_V0_API_KEY defined!
-					Authorization: `Bearer ${import.meta.env.VITE_V0_API_KEY}`,
-				},
-				body: JSON.stringify({
-					model: 'v0',
-					messages: [
-						{
-							role: 'system',
-							content: `You are an expert Flowchart Architect. 
-                            CRITICAL RULES:
-                            1. Return ONLY valid JSON.
-                            2. Do NOT use Markdown code blocks (no \`\`\`).
-                            3. Use this schema:
-                            {
-                                "nodes": [{ "id": "1", "label": "Start", "type": "process" }],
-                                "edges": [{ "source": "1", "target": "2", "label": "next" }]
-                            }`,
-						},
-						{
-							role: 'user',
-							content: `Create a flowchart for: ${inputText}`,
-						},
-					],
-				}),
-			})
+    const data = await response.json()
+    console.log('BACKEND DATA:', data)
 
-			// --- FIX 2: HANDLE 404/500 ERRORS ---
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`API Failed (${response.status}): ${errorText}`);
-			}
+	const file = data.files?.find(
+	f => typeof f.content === 'string' && f.content.trim().startsWith('{')
+	)
 
-			// --- FIX 3: SAFE JSON PARSING ---
-			// We get text first to safely clean it before parsing
-			const rawText = await response.text()
-			console.log("Raw API Response:", rawText) // Check console to see what we got
-
-			// Remove markdown code blocks (```json ... ```) if the AI added them
-			const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim()
-
-			const apiResponse = JSON.parse(cleanText)
-
-			// Extract the content. If content is a stringified JSON, parse it again.
-			let content = apiResponse.choices[0].message.content
-			if (typeof content === 'string') {
-				content = content.replace(/```json/g, '').replace(/```/g, '').trim()
-				// Sometimes the AI returns the JSON inside the content string
-				try {
-					content = JSON.parse(content)
-				} catch (e) {
-					// If it's not JSON string, use it as is (rare case)
-				}
-			}
-
-			drawFlowchart(content)
-
-		} catch (e) {
-			console.error("Full Error Details:", e)
-			alert(`Error: ${e.message}. Check the Console for details.`)
-		}
+	if (!file) {
+	console.error('FILES RETURNED BY V0:', data.files)
+	throw new Error('No JSON file returned from v0')
 	}
 
-	const drawFlowchart = ({ nodes, edges }) => {
-		const editor = editorRef.current
-		if (!editor) return
 
-		// --- FIX 4: FIX deleteShapes ERROR ---
-		// Convert the Set to an Array before passing to deleteShapes
-		const currentIds = Array.from(editor.getCurrentPageShapeIds())
-		if (currentIds.length > 0) {
-			editor.deleteShapes(currentIds)
-		}
+    let instructions
+    try {
+      instructions = JSON.parse(file.content)
+    } catch (err) {
+      console.error('RAW FILE CONTENT:', file.content)
+      throw new Error('Failed to parse flowchart JSON')
+    }
 
-		const idMap = {}
-		let x = 100
-		let y = 100
-		const yGap = 150
+    // Finally draw the diagram
+    drawFlowchart(instructions)
 
-		// Draw Nodes
-		if (nodes && Array.isArray(nodes)) {
-			nodes.forEach((node) => {
-				const shapeId = createShapeId()
-				idMap[node.id] = shapeId
+  } catch (err) {
+    console.error('Generate flowchart failed:', err)
+  }
+}
 
-				editor.createShape({
-					id: shapeId,
-					type: 'geo',
-					x: x,
-					y: y,
-					props: {
-						geo: 'rectangle',
-						text: node.label,
-						w: 200,
-						h: 60,
-						fill: 'none'
-					},
-				})
-				y += yGap
-			})
-		}
+const makeRichText = (text) => {
+  if (typeof text !== 'string') return undefined
 
-		// Draw Edges
-		if (edges && Array.isArray(edges)) {
-			edges.forEach((edge) => {
-				const sourceId = idMap[edge.source]
-				const targetId = idMap[edge.target]
+  const value = text.trim()
+  if (!value) return undefined
 
-				if (sourceId && targetId) {
-					editor.createShape({
-						type: 'arrow',
-						props: {
-							start: { type: 'binding', boundShapeId: sourceId, normalizedAnchor: { x: 0.5, y: 0.5 } },
-							end: { type: 'binding', boundShapeId: targetId, normalizedAnchor: { x: 0.5, y: 0.5 } },
-							text: edge.label || '',
-						},
-					})
-				}
-			})
-		}
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: value }],
+      },
+    ],
+  }
+}
 
-		editor.zoomToFit()
-	}
+
+const drawFlowchart = ({ nodes, edges }) => {
+  const editor = editorRef.current
+  if (!editor) return
+
+  const currentIds = Array.from(editor.getCurrentPageShapeIds())
+  if (currentIds.length > 0) {
+    editor.deleteShapes(currentIds)
+  }
+
+  const positionMap = {}
+  let x = 100
+  let y = 100
+  const yGap = 150
+  const nodeWidth = 200
+  const nodeHeight = 60
+
+  // Draw nodes
+  if (Array.isArray(nodes)) {
+    nodes.forEach((node) => {
+      const shapeId = createShapeId()
+
+      positionMap[node.id] = {
+        cx: x + nodeWidth / 2,
+        cy: y + nodeHeight / 2,
+      }
+
+      const richText = makeRichText(node.label)
+
+      editor.createShape({
+        id: shapeId,
+        type: 'geo',
+        x,
+        y,
+        props: {
+          geo: 'rectangle',
+          w: nodeWidth,
+          h: nodeHeight,
+          fill: 'none',
+          ...(richText ? { richText } : {}),
+        },
+      })
+
+      y += yGap
+    })
+  }
+
+  // Draw edges
+  if (Array.isArray(edges)) {
+    edges.forEach((edge) => {
+      const from = positionMap[edge.source]
+      const to = positionMap[edge.target]
+      if (!from || !to) return
+
+      const richText = makeRichText(edge.label)
+
+      editor.createShape({
+        type: 'arrow',
+        props: {
+          start: { x: from.cx, y: from.cy },
+          end: { x: to.cx, y: to.cy },
+          ...(richText ? { richText } : {}),
+        },
+      })
+    })
+  }
+
+  editor.zoomToFit()
+}
 
 	return (
 		<div style={{ position: 'fixed', inset: 0 }}>
